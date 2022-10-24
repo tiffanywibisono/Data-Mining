@@ -1,0 +1,212 @@
+---
+title: Lab kNN
+author: "Tiffany Wibisono"
+date: "2022-10-14"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(caret)
+```
+
+
+## 1. Load Data
+```{r}
+bank <- read.csv("UniversalBank.csv")
+head(bank, 10)
+str(bank)
+names(bank)
+```
+### 1.1 Data Clean Up
+```{r}
+#remove ID and zip code column
+bank = bank[,-c(1,5)]
+names(bank)
+
+#Reorder variables. Put the response last
+bank = bank[, c(1:7, 9:12, 8)]
+head(bank)
+str(bank)
+
+#Set categorical variable
+bank$Education = as.factor(bank$Education)
+bank$Securities.Account = as.factor(bank$Securities.Account)
+bank$CD.Account = as.factor(bank$CD.Account)
+bank$Online = as.factor(bank$Online)
+bank$CreditCard = as.factor(bank$CreditCard)
+
+#Rename outcome variable values
+bank$Personal.Loan = factor(bank$Personal.Loan,
+                            levels = c("0", "1"),
+                            labels = c("No", "Yes"))
+table(bank$Personal.Loan)
+```
+## 2. Create Training and Validation Set
+```{r}
+set.seed(666)
+
+train_index = sample(1:nrow(bank), 0.6*nrow(bank))
+valid_index = setdiff(1:nrow(bank), train_index)
+
+train_df = bank[train_index,]
+valid_df = bank[valid_index,]
+
+nrow(train_df)
+nrow(valid_df)
+```
+## 3. Define New Customer
+```{r}
+#Create new data set for new customer
+new_cust = data.frame(Age = 40,
+                      Experience = 10,
+                      Income = 84,
+                      Family = 2,
+                      CCAvg = 2,
+                      Education = 2,
+                      Mortgage = 0,
+                      Securities.Account = 0,
+                      CD.Account = 0,
+                      Online = 1,
+                      CreditCard = 1)
+new_cust
+
+#Set categorical variable as factor
+new_cust$Education = as.factor(new_cust$Education)
+new_cust$Securities.Account = as.factor(new_cust$Securities.Account)
+new_cust$CD.Account = as.factor(new_cust$CD.Account)
+new_cust$Online = as.factor(new_cust$Online)
+new_cust$CreditCard = as.factor(new_cust$CreditCard)
+
+new_cust
+```
+## 4. Prepare for kNN
+```{r}
+#Normalization, only for numerical variable
+train_norm = train_df
+valid_norm = valid_df
+
+#Create a normalizing algorithm using all variables except the categorical variables
+norm_values = preProcess(train_df[-c(12)],
+                         method = c("center",
+                                    "scale"))
+#Predict the normalized value of the training set
+train_norm[, -c(12)] = predict(norm_values,
+                               train_df[, -c(12)])
+head(train_norm)
+
+#Predict the normalized value of the validation set
+valid_norm[, -c(12)] = predict(norm_values,
+                               valid_df[, -c(12)])
+head(valid_norm)
+
+#Predict the normalized value for the new customers 
+new_cust_norm = predict(norm_values, new_cust)
+new_cust_norm
+```
+## 5. Train the kNN for Predictions
+### 5.1 Train and Predict when k = 3
+```{r}
+knn_model_k3 <- caret::knn3(Personal.Loan ~ ., 
+                            data = train_norm, k = 3)
+knn_model_k3
+
+#Predict the training set
+knn_pred_k3_train <- predict(knn_model_k3, 
+                             newdata = train_norm[, -c(12)], 
+                             type = "class")
+head(knn_pred_k3_train)
+
+#Evaluate 
+confusionMatrix(knn_pred_k3_train, as.factor(train_norm[, 12]),
+                positive = "Yes")
+```
+### 5.2 Train and Predict when k = 5
+```{r}
+knn_model_k5 <- caret::knn3(Personal.Loan ~ ., 
+                            data = train_norm, k = 5)
+knn_model_k5
+
+#Predict the training set
+knn_pred_k5_train = predict(knn_model_k5,
+                            newdata = train_norm[, -c(12)],
+                            type = "class")
+head(knn_pred_k5_train)
+
+#Evaluate
+confusionMatrix(knn_pred_k5_train,as.factor(train_norm[, 12]),
+                positive = "Yes")
+```
+### 5.3 Train and Predict when k =7
+```{r}
+knn_model_k7 <- caret::knn3(Personal.Loan ~ ., 
+                            data = train_norm, k = 7)
+knn_model_k7
+
+#Predict the training set
+knn_pred_k7_train = predict(knn_model_k7,
+                            newdata = train_norm[, -c(12)],
+                            type = "class")
+head(knn_pred_k5_train)
+
+#Evaluate
+confusionMatrix(knn_pred_k7_train,as.factor(train_norm[, 12]),
+                positive = "Yes")
+```
+## 6. Predict Validation Set
+### 6.1 Predict Validation Set when k = 3
+```{r}
+#Predict the validation set
+knn_pred_k3_valid = predict(knn_model_k3, 
+                            newdata = valid_norm[, -c(12)],
+                            type = "class")
+head(knn_pred_k3_valid)
+
+# Evaluate
+confusionMatrix(knn_pred_k3_valid, as.factor(valid_norm[, 12]),
+                positive = "Yes")
+```
+### 6.2 Predict Validation Set when k = 5
+```{r}
+#Predict the validation set
+knn_pred_k5_valid = predict(knn_model_k5, 
+                            newdata = valid_norm[, -c(12)],
+                            type = "class")
+head(knn_pred_k5_valid)
+
+#Evaluate
+confusionMatrix(knn_pred_k5_valid, as.factor(valid_norm[, 12]),
+                                            positive = "Yes")
+```
+### 6.3 Predict validation Set when k = 7
+```{r}
+#Predict the validation set
+knn_pred_k7_valid = predict(knn_model_k7,
+                            newdata = valid_norm[, -c(12)],
+                            type = "class")
+head(knn_pred_k7_valid)
+
+#Evaluate
+confusionMatrix(knn_pred_k7_valid, as.factor(valid_norm[, 12]),
+                positive = "Yes")
+```
+## 7. Decision for Personal Loan using New Data
+```{r}
+new_cust_predict = predict(knn_model_k3, newdata = new_cust_norm,
+                           type = "class")
+new_cust_predict
+```
+## 8. Model Evaluation
+```{r}
+library(ROSE)
+ROSE::roc.curve(valid_norm$Personal.Loan, knn_pred_k3_valid)
+```
+## 9. Summary
+- Based on the prediction, it shows that model 3 gives us the best result. The accuracy in the training set is 97.53%, and the accuracy in the validation set is 96.15%.
+- When I classify a new customer, it is predicted that she will not accept the loan offer.
