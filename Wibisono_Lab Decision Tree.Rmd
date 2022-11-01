@@ -1,0 +1,187 @@
+---
+title: "Lab Decision Tree"
+author: "Tiffany Wibisono"
+date: "2022-10-26"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(rpart)
+library(rpart.plot)
+library(forecast)
+library(caret)
+```
+
+# Regression Tree
+## 1. Load Data
+```{r}
+toyota <- read.csv("ToyotaCorolla.csv", header = TRUE)
+
+head(toyota)
+str(toyota)
+names(toyota)
+nrow(toyota)
+
+#select necessary variables only
+toyota = toyota[, c(3:4, 7:9, 12, 14, 17, 19, 21, 25:26, 28, 30, 34, 39)]
+names(toyota)
+t(t(names(toyota)))
+str(toyota)
+
+#set the target variable as a factor
+toyota$Fuel_Type = as.factor(toyota$Fuel_Type)
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+
+train_index = sample(1:nrow(toyota), 0.6*nrow(toyota))
+valid_index = setdiff(1:nrow(toyota), train_index)
+
+train_df = toyota[train_index, ]
+valid_df = toyota[valid_index, ]
+
+#checking
+head(train_df)
+head(valid_df)
+str(train_df)
+str(valid_df)
+nrow(train_df)
+nrow(valid_df)
+```
+## 3. Build Decision Tree
+```{r}
+regress_tr = rpart( Price ~.,
+                   data = train_df, method = "anova", maxdepth = 3)
+prp(regress_tr)
+
+#Predict training set
+predict_train = predict(regress_tr, train_df)
+accuracy(predict_train, train_df$Price)
+
+#Predict validation set
+predict_valid = predict(regress_tr, valid_df)
+accuracy(predict_valid, valid_df$Price)
+```
+## 4. Predict New Record
+```{r}
+#Create new dataframe
+new_record <- data.frame(Age_08_04 = 77, 
+                         KM = 117000, 
+                         Fuel_Type = "Petrol", 
+                         HP = 110, 
+                         Automatic = 0, 
+                         Doors = 5, 
+                         Quarterly_Tax = 100, 
+                         Mfr_Guarantee = 0, 
+                         Guarantee_Period = 3, 
+                         Airco = 1, 
+                         Automatic_airco = 0, 
+                         CD_Player = 0, 
+                         Powered_Windows = 0, 
+                         Sport_Model = 0, 
+                         Tow_Bar = 1)
+
+
+#Predict new record
+regress_tr_pred = predict(regress_tr, newdata = new_record)
+regress_tr_pred
+```
+## 5. Summary
+- RMSE in the training set is 1295.696, while RMSE in the validation set is 1581.903. It is normal to have a slightly higher RMSE in the validation set than in the training set; thus, in this case, the model looks good.
+- The predicted price of the new record would be $7969.59.
+
+
+# Classification Tree
+## 1. Binning
+```{r}
+#Converting the Price to a categorical variable
+toyota$cat_price <- ifelse(toyota$Price <= mean(toyota$Price, na.rm = TRUE), "0", "1")
+table(toyota$cat_price)
+
+toyota$cat_price <- as.factor(toyota$cat_price)
+
+
+#Remove the numerical Price variable to avoid confusion 
+toyota_cat <- toyota[,- c(1)]
+names(toyota_cat)
+str(toyota_cat)
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+
+train_cat_index = sample(1:nrow(toyota_cat), 0.6*nrow(toyota_cat))
+valid_cat_index = setdiff(1:nrow(toyota_cat), train_cat_index)
+
+train_cat_df = toyota_cat[train_cat_index, ]
+valid_cat_df = toyota_cat[valid_cat_index, ]
+
+head(train_cat_df)
+head(valid_cat_df)
+str(train_cat_df)
+str(valid_cat_df)
+nrow(train_cat_df)
+nrow(valid_cat_df)
+```
+## 3. Build Classification Tree
+```{r}
+names(train_cat_df)
+
+class_tr = rpart(cat_price ~.,
+                 data = train_cat_df, method = "class", maxdepth = 3)
+prp(class_tr, cex = 1, tweak = 1)
+```
+## 4. Model Evaluation
+### 4.1 Confusion Matrix
+```{r}
+#Training set
+class_tr_train_predict = predict(class_tr, train_cat_df,
+                                 type = "class")
+t(t(head(class_tr_train_predict, 10)))
+
+confusionMatrix(class_tr_train_predict, train_cat_df$cat_price)
+
+#Validation set
+class_tr_valid_predict = predict(class_tr, valid_cat_df,
+                                 type = "class")
+t(t(head(class_tr_valid_predict, 10)))
+confusionMatrix(class_tr_valid_predict, valid_cat_df$cat_price)
+
+#Compute the probabilities
+class_tr_valid_predict_prob = predict(class_tr, valid_df,
+                                      type = "prob")
+head(class_tr_valid_predict_prob)
+```
+### 4.2 ROC Curve
+```{r}
+library(ROSE)
+
+ROSE:: roc.curve(valid_cat_df$cat_price, class_tr_valid_predict)
+```
+## 5. Predict New Record
+```{r}
+cat_price_class_tr = predict(class_tr, newdata = new_record)
+cat_price_class_tr
+```
+## 6. Summary
+- The top predictor in the classification tree is the Age_08_0>=57.
+- The accuracy in the training set is 0.9001, and the accuracy in the validation set is 0.8904. It is normal to have a slightly lower accuracy in the validation than in the training set; thus, in this case, the model is good.
+
+# Compare the Trees
+## 1. Calculate the Average Price 
+```{r}
+mean(toyota$Price)
+```
+## 2. Summary
+- The average price of used Toyota cars is $10,730.82.
+- Using a regression tree, the predicted price of a new data is $7969.59, which is 25.73% lower than the average price. 
+-Using a classification tree, the probability of the predicted price of a new data to be lower than the average price is 0.95. The result tells us that the price of the new data is most likely to be lower than the average price. There is only a 4% chance that it is going to be priced above the average price.
+- Based on the result of regression and classification tree, it shows that the new data is likely to be priced below $10,730.82.
