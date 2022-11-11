@@ -1,0 +1,386 @@
+---
+title: "Project 1"
+author: "Tiffany Wibisono"
+date: "2022-10-24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(caret)
+```
+# Project Overview
+After Steve Rogers replaced the Infinity Stones, Stark Enterprises has branched into the financial industry. Perhaps Steve Rogers changed something when he travelled back in time. Since Mr. Stark is on a different timeline, they are short of analytical power. They would like to build a model and predict which customers are likely to have high-risk in having loan payment difficulties. 
+
+# Model 1A
+## 1. Data Cleaning
+```{r}
+#load data
+loan  <- read.csv("credit_fa2022_12.csv")
+
+head(loan)
+str(loan)
+names(loan)
+nrow(loan)
+ncol(loan)
+
+#select necessary variables only
+loan = loan[, c(3, 6:11, 14, 19, 26, 29)]
+head(loan, 10)
+names(loan)
+t(t(names(loan)))
+str(loan)
+
+#set target variable and other categorical variables as factor
+loan$TARGET = factor(loan$TARGET,
+                     levels = c("0", "1"),
+                     labels = c("No", "Yes"))
+                     
+
+loan$FLAG_CONT_MOBILE = as.factor(loan$FLAG_CONT_MOBILE)
+loan$FLAG_OWN_CAR = as.factor(loan$FLAG_OWN_CAR)
+loan$FLAG_OWN_REALTY = as.factor(loan$FLAG_OWN_REALTY)
+loan$NAME_INCOME_TYPE = as.factor(loan$NAME_INCOME_TYPE)
+loan$OCCUPATION_TYPE = as.factor(loan$OCCUPATION_TYPE)
+
+str(loan)
+```
+## 2. Create Training and Validation Set
+```{r}
+set.seed(666)
+train_index = sample(1:nrow(loan), 0.6*nrow(loan))
+valid_index = setdiff(1:nrow(loan), train_index)
+
+train_df = loan[train_index, ]
+valid_df = loan[valid_index, ]
+```
+## 3. Prepare for kNN
+### 3.1 Create Normalizing Algorithm
+```{r}
+train_norm = train_df
+valid_norm = valid_df
+
+#Create a normalizing algorithm using all variables except the categorical variables
+norm_values = preProcess(train_df[-c(1)],
+                         method = c("center",
+                                    "scale"))
+```
+### 3.2 Predict the Normalized Value
+```{r}
+#Predict the training set
+train_norm[, -c(1)] = predict(norm_values, train_df[,-c(1)])
+train_norm = na.omit(train_norm)
+library(ROSE)
+train_norm_bal = ROSE(TARGET~., data = train_norm, seed = 666)$data
+
+
+#Predict the validation set
+valid_norm[, -c(1)] = predict(norm_values, valid_df[, -c(1)])
+head(valid_norm)
+str(valid_norm)
+valid_norm = na.omit(valid_norm)
+```
+## 4. Train and Validate the kNN for Predictions
+### 4.1 Train when k = 19
+```{r}
+knn_model_k19 = caret::knn3(TARGET ~.,
+                           data = train_norm_bal, k = 19)
+knn_model_k19
+```
+### 4.2 Predict k =19 in Training and Validation Set
+```{r}
+#Training set
+knn_pred_k19_train = predict(knn_model_k19,
+                            newdata = train_norm_bal[, -c(1)], type = "class")
+
+head(knn_pred_k19_train)
+
+confusionMatrix(knn_pred_k19_train, as.factor(train_norm_bal[, 1]), 
+                positive = "Yes")
+
+#Validation set
+knn_pred_k19_valid = predict(knn_model_k19, 
+                            newdata = valid_norm[, -c(1)], type = "class")
+
+head(knn_pred_k19_valid)
+
+confusionMatrix(knn_pred_k19_valid, as.factor(valid_norm[, (1)]),
+                positive = "Yes")
+
+```
+## 5. Model Evaluation
+```{r}
+ROSE::roc.curve(valid_norm$TARGET, knn_pred_k19_valid)
+```
+# Model 1B
+## 1. Build Classification Tree
+```{r}
+library(rpart)
+library(rpart.plot)
+
+loan_class_tr = rpart(TARGET ~ ., data = train_norm_bal, method = "class", minbucket = 3, maxdepth = 20)
+
+prp(loan_class_tr, cex = 0.8, tweak = 1)
+rpart.plot(loan_class_tr, type = 4)
+```
+
+## 2. Model Evaluation
+### 2.1 Confusion Matrix
+```{r}
+#Training set
+loan_class_tr_predict = predict(loan_class_tr, train_norm_bal, type = "class")
+
+t(t(head(loan_class_tr_predict, 10)))
+
+confusionMatrix(loan_class_tr_predict, train_norm_bal$TARGET, positive = "Yes")
+
+#Validation set
+class_tr_valid_predict = predict(loan_class_tr, valid_df, type = "class")
+
+t(t(head(class_tr_valid_predict)))
+
+confusionMatrix(class_tr_valid_predict, valid_df$TARGET, positive = "Yes")
+
+#Compute probabilities
+class_tr_valid_predict_prob = predict(loan_class_tr, valid_df, type = 'prob')
+
+head(class_tr_valid_predict_prob)
+
+#if else
+confusionMatrix(as.factor(ifelse(class_tr_valid_predict_prob[,1] > 0.82, "No", "Yes")), valid_df$TARGET, positive = "Yes")
+```
+### 2.2. ROC Curve
+```{r}
+ROSE::roc.curve(valid_df$TARGET, class_tr_valid_predict)
+```
+
+# Model 2
+## 1. Data Cleaning
+```{r}
+loan <- read.csv("credit_fa2022_12.csv")
+
+#select necessary variables only
+loan_v2 = loan[, c(3, 6:11)]
+head(loan_v2, 10)
+names(loan_v2)
+t(t(names(loan_v2)))
+str(loan_v2)
+
+#set target variable and other categorical variables as factor
+loan_v2$TARGET = factor(loan_v2$TARGET,
+                     levels = c("0", "1"),
+                     labels = c("No", "Yes"))
+                     
+loan_v2$FLAG_OWN_CAR = as.factor(loan_v2$FLAG_OWN_CAR)
+loan_v2$FLAG_OWN_REALTY = as.factor(loan_v2$FLAG_OWN_REALTY)
+
+str(loan_v2)
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+
+train_index_v2 = sample(1:nrow(loan_v2), 0.6*nrow(loan_v2))
+valid_index_v2 = setdiff(1:nrow(loan_v2), train_index_v2)
+
+train_df_v2 = loan_v2[train_index_v2, ]
+valid_df_v2 = loan_v2[valid_index_v2, ]
+```
+## 3. Prepare for kNN
+### 3.1 Create Normalizing Algorithm
+```{r}
+train_norm_v2 = train_df_v2
+valid_norm_v2 = valid_df_v2
+
+#Create a normalizing algorithm using all variables except the categorical variables
+norm_values_v2 = preProcess(train_df_v2[-c(1)],
+                         method = c("center",
+                                    "scale"))
+
+t(t(names(train_df_v2)))
+```
+### 3.2 Predict the Normalized Value
+```{r}
+#Predict the training set
+train_norm_v2[, -c(1)] = predict(norm_values_v2, train_df_v2[,-c(1)])
+head(train_norm_v2)
+str(train_norm_v2)
+train_norm_v2 = na.omit(train_norm_v2)
+train_norm_bal_v2 = ROSE(TARGET~., data = train_norm_v2, seed = 666)$data
+
+
+#Predict the validation set
+valid_norm_v2[, -c(1)] = predict(norm_values_v2, valid_df_v2[, -c(1)])
+head(valid_norm_v2)
+str(valid_norm_v2)
+valid_norm_v2 = na.omit(valid_norm_v2)
+```
+## 4. Train and Validate the kNN for Predictions
+### 4.1 Train when k = 19
+```{r}
+knn_model_k19_v2 = caret::knn3(TARGET ~.,
+                           data = train_norm_bal_v2, k = 19)
+knn_model_k19_v2
+```
+### 4.2 Predict k = 19 in the Training and Validation Set
+```{r}
+#Training set
+knn_pred_k19_train_v2 = predict(knn_model_k19_v2,
+                            newdata = train_norm_bal_v2[, -c(1)], type = "class")
+
+confusionMatrix(knn_pred_k19_train_v2, as.factor(train_norm_bal_v2[, 1]), 
+                positive = "Yes")
+
+#Validation set
+knn_pred_k19_valid_v2 = predict(knn_model_k19_v2, 
+                            newdata = valid_norm_v2[, -c(1)], type = "class")
+
+confusionMatrix(knn_pred_k19_valid_v2, as.factor(valid_norm_v2[, (1)]),
+                positive = "Yes")
+```
+## 5. Model Evaluation
+```{r}
+ROSE:: roc.curve(valid_norm_v2$TARGET, knn_pred_k19_valid_v2)
+
+```
+
+# Model 3
+## 1. Data Cleaning
+```{r}
+loan  <- read.csv("credit_fa2022_12.csv")
+
+#select necessary variables only
+loan3 = loan[, c(3:4, 9:10, 14, 17, 29, 41)]
+names(loan3)
+str(loan3)
+
+#set target variable and other categorical variables as factor
+loan3$TARGET = factor(loan3$TARGET,
+                     levels = c("0", "1"),
+                     labels = c("No", "Yes"))
+loan3$NAME_CONTRACT_TYPE = as.factor(loan3$NAME_CONTRACT_TYPE)
+loan3$NAME_INCOME_TYPE = as.factor(loan3$NAME_INCOME_TYPE)
+loan3$NAME_HOUSING_TYPE = as.factor(loan3$NAME_HOUSING_TYPE)
+loan3$OCCUPATION_TYPE = as.factor(loan3$OCCUPATION_TYPE)
+loan3$ORGANIZATION_TYPE = as.factor(loan3$ORGANIZATION_TYPE)
+
+str(loan3)
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+train_index_v3 = sample(1:nrow(loan3), 0.6*nrow(loan3))
+valid_index_v3 = setdiff(1:nrow(loan3), train_index_v3)
+
+train_df_v3 = loan3[train_index_v3, ]
+valid_df_v3 = loan3[valid_index_v3, ]
+```
+## 3. Prepare for kNN
+### 3.1 Create Normalizing Algorithm
+```{r}
+train_norm_v3 = train_df_v3
+valid_norm_v3 = valid_df_v3
+
+str(train_norm_v3)
+str(valid_norm_v3)
+
+norm_values_v3 = preProcess(train_df_v3[-c(1)],
+                         method = c("center",
+                                    "scale"))
+
+t(t(names(train_df_v3)))
+```
+### 3.2 Predict the Normalized Value
+```{r}
+#Predict the training set
+train_norm_v3[, -c(1)] = predict(norm_values_v3, train_df_v3[,-c(1)])
+head(train_norm_v3)
+train_norm_v3 = na.omit(train_norm_v3)
+library(ROSE)
+train_norm_bal_v3 = ROSE(TARGET~., data = train_norm_v3, seed = 666)$data
+
+#Predict the validation set
+valid_norm_v3[, -c(1)] = predict(norm_values_v3, valid_df_v3[, -c(1)])
+head(valid_norm_v3)
+valid_norm_v3 = na.omit(valid_norm_v3)
+```
+## 4. Train and Validate the kNN for Predictions
+### 4.1 Train when k = 19
+```{r}
+knn_model_k19_v3 = caret::knn3(TARGET ~.,
+                           data = train_norm_bal_v3, k = 19)
+knn_model_k19_v3
+```
+### 4.2 Predict k = 19 in the Training and Validation Set
+```{r}
+#Training set
+knn_pred_k19_train_v3 = predict(knn_model_k19_v3,
+                            newdata = train_norm_bal_v3[, -c(1)], type = "class")
+
+confusionMatrix(knn_pred_k19_train_v3, as.factor(train_norm_bal_v3[, 1]),
+                positive = "Yes")
+
+#Validation set
+knn_pred_k19_valid_v3 = predict(knn_model_k19_v3,
+                                newdata = valid_norm_v3[, -c(1)], type = "class")
+
+confusionMatrix(knn_pred_k19_valid_v3, as.factor(valid_norm_v3[, 1]),
+                positive = "Yes")
+```
+## 5. Model Evaluation
+```{r}
+ROSE::roc.curve(valid_norm_v3$TARGET, knn_pred_k19_valid_v3)
+```
+# Predict New Data 
+## 1. Data Cleaning
+```{r}
+#load new data
+new_loan = read.csv("credit_test_fa2022_12.csv", header = TRUE)
+
+t(t(names(new_loan)))
+
+#select necessary variables only
+new_loan = new_loan[, c(3, 8:9, 13, 16, 28, 40)]
+str(new_loan)
+
+#set categorical variables as factor
+new_loan$NAME_CONTRACT_TYPE = as.factor(new_loan$NAME_CONTRACT_TYPE)
+new_loan$NAME_INCOME_TYPE = as.factor(new_loan$NAME_INCOME_TYPE)
+new_loan$NAME_HOUSING_TYPE = as.factor(new_loan$NAME_HOUSING_TYPE)
+new_loan$OCCUPATION_TYPE = as.factor(new_loan$OCCUPATION_TYPE)
+new_loan$ORGANIZATION_TYPE = as.factor(new_loan$ORGANIZATION_TYPE)
+
+str(new_loan)
+```
+## 2. Predict Normalized Value using New Data
+```{r}
+new_loan_norm = predict(norm_values_v3, new_loan)
+
+new_loan_norm
+```
+## 3. Predict New Data using Model 3
+```{r}
+new_loan_predict = predict(knn_model_k19_v3, newdata = new_loan_norm,
+                          type = "class")
+new_loan_predict
+```
+# Summary
+There are 66 independent variables and 1 dependent (target) variable in the dataset. The dataset consists of variables related to a client’s information (e.g. number of children, occupation type, housing type). Although there are 66 independent variables, we only selected 13 most important independent variables to create our prediction model: (1) whether a client owns a car, (2) whether a client owns a property, (3) client’s number of children, (4) client’s total income, (5) credit amount of the loan, (6) loan annuity, (7) client’s type of income, (8) the number of days a client is employed prior to starting the application, (9) whether client’s mobile phone was reachable, (10) clients type of occupation, (11) type of organization where client works, (12) type of loan (cash or revolving), (13) type of house the live in (e.g. rent). 
+
+When we did our data exploration, we omitted the N/A values to ensure the accuracy of our model. We built a total of 4 models. Models 1A ,2, and 3 are kNN while model 1B is a classification tree.
+
+We use all the first 10 variables mentioned above to create model 1A and 1B. Model 1A training set has an accuracy of 0.6674, sensitivity of 0.7221, and specificity of 0.6113. In the validation set, it has an accuracy of 0.5375, sensitivity of 0.5488, specificity of 0.5348. Therefore, the area under the ROC curve is 0.542. Based on the given result, model 1A is a good model for prediction because the accuracy in the validation set is slightly lower than in the training set. Furthermore, the sensitivity and specificity in both sets are good. 
+
+On the other hand, Model 1B training set has an accuracy of 0.5771, sensitivity of 0.5461, and specificity of 0.6089. In the validation set, it has an accuracy of 0.8046, sensitivity of 0, and specificity of 1.0. Therefore, the area under the ROC curve is 0.5. Based on the given result, this is not a good model to use because we do not want a model that has higher accuracy in the validation than in the training set. Moreover, the sensitivity and specificity result in the validation set is too extreme, and we also do not want to have a linear result in the ROC curve. 
+
+We selected variables 1 through 6 to create model 2. In the training set, the model has an accuracy of 0.6314, sensitivity of 0.6366, and specificity of 0.6261. In the validation set, the model has an accuracy of 0.571, sensitivity of 0.46354, and specificity of 0.59716. Thus, the area under the ROC curve is 0.53. Based on the given result, this is a good model because the accuracy in the validation set is slightly lower than in the training set. 
+
+Model 3 is based on variables 4, 5, 7, 10-13. In the training set, the model has an accuracy of 0.6669, sensitivity of 0.7262, and specificity of 0.6060. In the validation set, the model has an accuracy of 0.5353, sensitivity of 0.5270, and specificity of 0.5697. Thus, the area under the ROC curve is 0.548. Based on the given result, this is a good model because the validation set has slightly lower accuracy than the training set.
+
+Among all the four models, model 1A and model 3 are the two leading models because they have similar ROC result. The more concave the curve, the better it is. Nevertheless, model 3 has a better true positive rate (sensitivity) in the validation set; thus, we think that model 3 is the best model to predict the outcome of new customers. The result of the prediction tells us that the new customers are likely to have a difficulty in the loan payment in which they will have more than X days on at least one of the first Y installments of the loan. 
