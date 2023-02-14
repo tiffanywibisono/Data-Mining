@@ -1,0 +1,110 @@
+---
+title: "Lab Regression"
+author: "Tiffany Wibisono"
+date: "2022-11-09"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: default
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## 1. Load Data
+```{r}
+airfares <- read.csv("Airfares.csv", header = TRUE)
+head(airfares, 10)
+
+str(airfares)
+t(t(names(airfares)))
+
+airfares = airfares[, -c(1:4, 7:8, 14:15)]
+t(t(names(airfares)))
+
+```
+## 2. Create Training and Validation set and Find Correlation 
+### 2.1 Trainng and Validation Split
+```{r}
+set.seed(666)
+
+train_index = sample(1:nrow(airfares), 0.6*nrow(airfares))
+valid_index = setdiff(1:nrow(airfares), train_index)
+
+train_df = airfares[train_index, ]
+valid_df = airfares[valid_index, ]
+```
+### 2.2 Finding the Best Correlation
+```{r}
+library(corrgram)
+cor(train_df)
+pairs(FARE ~., data = train_df, pch = ".")
+corrgram(train_df)
+
+#Based on the correlogram, we can see that distance and fare is highly correlated to each other.
+```
+
+### 2.3 Correlation using Scatter Plot
+```{r}
+library(ggplot2)
+
+ggplot(train_df, aes(x = DISTANCE, y = FARE)) + geom_point()
+```
+
+## 3. Regression Model
+```{r}
+fare_model <- lm(FARE ~ ., data = train_df)
+summary(fare_model)
+```
+## 4. Predict Training and Validation Set
+```{r}
+#Training set
+fare_model_pred_train = predict(fare_model, train_df)
+
+#Validation set
+fare_model_pred_valid = predict(fare_model, valid_df)
+```
+## 5. Model Evaluation
+```{r}
+library(forecast)
+
+accuracy(fare_model_pred_train, train_df$FARE)
+accuracy(fare_model_pred_valid, valid_df$FARE)
+max(train_df$FARE) - min(train_df$FARE)
+sd(train_df$FARE)
+max(valid_df$FARE) - min(valid_df$FARE)
+sd(valid_df$FARE)
+
+library(car)
+vif(fare_model)
+
+library(lmtest)
+bptest(fare_model)
+```
+## 6. Predicting New Reocrd
+### 6.1 Create New Record Data Frame
+```{r}
+new_record <- data.frame(COUPON = 1.202, NEW = 3, 
+                         VACATION = "Yes", SW = "Yes", 
+                         HI = 4442.141, S_INCOME = 28760, 
+                         E_INCOME = 27664, S_POP = 4557004, 
+                         E_POP = 3195503, SLOT = "Free", 
+                         GATE = "Free", PAX = 12782, 
+                         DISTANCE = 1976)
+```
+### 6.2 Predict Fare for the New Record
+```{r}
+fare_model_pred_new = predict(fare_model, newdata = new_record, interval = "confidence")
+
+fare_model_pred_new
+```
+## 7. Discussion
+#### Q1. Which variables would actually be available in a real-world implementation of this model for predicting average fare between airports?
+All variables in the data set except Slot, Gate, and Pax are available in a recall-world implementation of this model for predicting average fare between airports. We will only know the airport congestion, the gate number, and the number of passengers on the day of the flight itself. 
+
+#### Q2. Assuming the variable fare is recoded into high/low using the mean. Propose one data analysis technique that can be used to predict whether a route's fare is high or low, and describe the appropriate data transformations for your proposed technique. Then, justify the proposed technique and describe how you would evaluate the quality of this new model.
+Regression model can only be used if both the x and y variables are numerical. In the case where the y-variable is classified as a categorical variable, I would suggest to predict the model using a kNN. Using kNN requires us to normalize the target variable as well as other the other categorical variables. In new_record data set, we have to normalize the following variables before predicting: Vacation, SW, Slot, and Gate. To evaluate the result, we would need to look into the accuracy, specificity, and sensitivity in both the training and validation set. We would want to have a result that has slightly higher accuracy in the training than in the validation set. And finally, we would want to create a ROC curve to evaluate the quality of this new model. The more concave the curve, the better the model. 
+

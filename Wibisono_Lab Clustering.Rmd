@@ -1,0 +1,95 @@
+---
+title: "Lab Clustering"
+author: "Tiffany Wibisono"
+date: "2022-11-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("factoextra")
+library(factoextra)
+```
+## 1. Data Cleaning
+```{r}
+univ <- read.csv("Universities.csv", header = TRUE)
+
+#remove records with missing data
+univ_complete <- na.omit(univ)
+
+```
+##2. Hierarchical clustering using normalised data, complete linkage and Manhattan
+### 2.1 Remove categorical variables and ID
+```{r}
+#These are college name, state and public vs private
+univ_cont <- univ_complete[, -c(1:3)]
+
+t(t(names(univ_cont)))
+```
+### 3.2 Normalize Data
+```{r}
+univ_cont_norm <- sapply(univ_cont, scale)
+```
+### 3.3 Compute the normalized distance matrix using Manhattan distance
+```{r}
+distance_matrix <- dist(univ_cont_norm, method = "manhattan")
+distance_matrix
+```
+### 3.4 Create hierarchical clusters
+```{r}
+#syntax
+hierarchical_cluster <- hclust(distance_matrix, method = "complete")
+hierarchical_cluster
+
+#plot the dendrogram
+plot(hierarchical_cluster, hang = "-200", ann = TRUE)
+
+#check cluster quality
+library(factoextra)
+
+fviz_nbclust(univ_cont_norm, 
+             hcut, method = "silhouette") +
+  labs(subtitle = "Silhouette method")
+```
+### 3.5 Compute cluster membership using k = 5
+```{r}
+hierarchical_cluster_k5 = cutree(hierarchical_cluster, k = 5)
+
+hierarchical_cluster_k5
+```
+### 3.6 Create a data frame of the cluster membership
+```{r}
+hierarchical_cluster_k5_df = as.data.frame(hierarchical_cluster_k5)
+
+head(hierarchical_cluster_k5_df)
+
+#rename the the column title
+names(hierarchical_cluster_k5_df)[1] = "Cluster"
+tail(hierarchical_cluster_k5_df)
+
+#count the number of frequency in each cluster
+table(hierarchical_cluster_k5_df$Cluster)
+```
+### 3.7 Merge with Original Data
+```{r}
+univ_cont_w_cluster = cbind(univ_cont, hierarchical_cluster_k5_df)
+
+head(univ_cont_w_cluster)
+
+names(univ_cont_w_cluster)
+```
+## 4. Investigate Cluster Characteristics
+```{r}
+#cluster characteristics, numerical variables
+
+ncol(univ_cont_w_cluster)
+t(t(names(univ_cont)))
+
+univ_cont_w_cluster_df = aggregate(univ_cont[, c(1:17)],
+                                   by = univ_cont_w_cluster[18],
+                                   FUN = mean)
+
+#cluster characteristics, categorical variables
+table(univ_cont_w_cluster_df$Cluster)
+```

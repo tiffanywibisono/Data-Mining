@@ -1,0 +1,179 @@
+---
+title: "Project 2"
+author: "Tiffany Wibisono"
+date: "2022-11-28"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: default
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(rpart)
+library(rpart.plot)
+library(forecast)
+library(caret)
+
+```
+# Model 1 - Regression Tree
+## 1. Data Cleaning
+```{r}
+home = read.csv('house_12.csv', header = TRUE)
+
+#select necessary variables only
+home = home[, c(7:17, 19)] 
+  
+names(home)
+
+#minimum home price
+min(home$price)
+#maximum home price
+max(home$price)
+#average home price
+mean(home$price)
+#median home price
+median(home$price)
+
+#set target variable as factor
+home$waterfront = factor(home$waterfront,
+                         labels = c("0", "1"),
+                         levels = c("No", "Yes"))
+
+str(home)
+t(t(names(home)))
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+
+train_index= sample(1:nrow(home), 0.6*nrow(home))
+valid_index = setdiff(1:nrow(home), train_index)
+
+train_df = home[train_index, ]
+valid_df = home[valid_index, ]
+```
+## 3. Build Decision Tree
+### 3.1 Create a Regression Tree
+```{r}
+regress_tr = rpart(price ~., 
+                   data = train_df,
+                   method = "anova", 
+                   maxdepth = 3)
+prp(regress_tr)
+```
+
+### 3.2 Predict Training and Validation Set
+```{r}
+#training set
+predict_train = predict(regress_tr, train_df)
+accuracy(predict_train, train_df$price)
+
+#validation set
+predict_valid = predict(regress_tr, valid_df)
+accuracy(predict_valid, valid_df$price)
+```
+
+## 4. Predict New Record
+```{r}
+home_new = read.csv("house_test_12.csv", header = TRUE)
+
+#select necessary variables only
+home_new = home_new[, c(7:18)]
+
+home_new$waterfront = factor(home_new$waterfront,
+                                labels = c("0", "1"),
+                                levels = c("No", "Yes"))
+
+
+#predict new record
+regress_tr_pred = predict(regress_tr, newdata = home_new)
+regress_tr_pred
+
+```
+# Model 2 - Log Regression
+## 1. Data Cleaning
+```{r}
+home_v2 = read.csv("house_12.csv", header = TRUE)
+
+#select necessary variables only
+home_v2 = home_v2[, c(7:12, 14:17, 19)]
+str(home_v2)
+
+#home_v2[is.na(home_v2)|home_v2 == "Inf"] = NA
+#home_v2 = na.omit(home_v2)
+
+```
+## 2. Set Training and Validation Set
+```{r}
+set.seed(666)
+train_index_v2 = sample(1:nrow(home_v2), 0.6*nrow(home_v2))
+valid_index_v2 = setdiff(1:nrow(home_v2), train_index)
+
+train_df_v2 = home_v2[train_index_v2, ]
+valid_df_v2 = home_v2[valid_index_v2, ]
+
+
+```
+## 3. Predictions
+### 3.1 Create a Regression Log Model
+```{r}
+price_model_log = lm(log(price) ~., 
+                     data = train_df_v2)
+summary(price_model_log)
+```
+###  3.2 Predict Training and Validation Set
+```{r}
+#Training set
+price_model_log_pred_train = predict(price_model_log, train_df_v2)
+train_df$logPrice = log(train_df_v2$price)
+accuracy(price_model_log_pred_train, train_df$logPrice)
+
+#Validation set
+price_model_log_pred_valid = predict(price_model_log, valid_df_v2)
+valid_df$logPrice = log(valid_df_v2$price)
+accuracy(price_model_log_pred_valid, valid_df$logPrice)
+
+#install.packages("gvlma")
+library(gvlma)
+gvlma(price_model_log)
+```
+## 4. Predict New Record
+```{r}
+home_new_v2 = read.csv("house_test_12.csv", header = TRUE)
+
+str(home_new_v2)
+t(t(names(home_new_v2)))
+
+home_new_v2 = home_new_v2[, c(7:11, 13:16,18)]
+
+price_model_log_pred_home_new_v2 = predict(price_model_log,
+                                           newdata = home_new_v2,
+                                           interval = "confidence")
+
+price_model_log_pred_home_new_v2
+
+#convert result to a dataframe
+price_model_log_pred_home_new_v2_df = as.data.frame(price_model_log_pred_home_new_v2)
+
+price_model_log_pred_home_new_v2_df_value = exp(1)^price_model_log_pred_home_new_v2_df
+price_model_log_pred_home_new_v2_df_value
+
+```
+# Summary 
+In the research on Real Estate in King County, the goal of the study is to create a new model to predict the prices of new homes. In our data, there are 21 variables and 1 independent variable(Price), and we have used 11 variables, and they are: (1) Number of bedrooms/House, (2) Number of bathrooms/House, (3) Square footage of the home, (4) Square footage of the lot, (5) Total floors in house, (6) House which has a view to a waterfront view, (7) the number of times it has been viewed at the point of data collection, (8) How good the condition is (overall), (9) Overall grade given to the house unit, based on King County grading system. The higher the better, (10) Square footage of the basement, (11) Year built. 
+
+Before creating the model, we first did the data-clearing process by filtering out all the unnecessary variables and changing the waterfront variable into a factor. Afterward, we created the training and validation with a scale of 60:40 and set the seed to 666.
+
+While working on the research, we created two models with the same variables, which are regression tree and regression for our predictions. For our first model, we have designed a regression tree, and the regression tree has shown that the square footage plays a significant role in our predictions as the core of the regression tree, and the number of views and grading of the house also plays a significant role in our predictions. While the regression tree contains a number of variables, we believe that the variables that we have chosen are correct, as it does not rely on a single variable. In the end, we used the training and validation set to look at the RMSE of the regression tree. The training set has a 238928.3 while the validation has a 266843.3, which makes sense as validation should contain more errors than the training set. While the mean of the original mode is around 541896.5, we believe that the RMSE is low enough for us to believe that it is a great mode. 
+
+For our second model, we used a regression log model, and we first looked at the summary of the regression model. While looking at the summary, one interesting fact is that the significant variable of bedrooms provides a negative correlation meaning that more bedrooms would receive a lower price. Still, the correlation should be related to the location of the house, as the location of the house would affect the price of the house in general, as we cannot identify whether a certain amount of houses are located in rural verse houses in urban. Afterward, we used the model to look at the RMSE of the model and received the training set of 0.313 and validation of 0.314, which is great in general. Afterward, we used the gvlma package to check on our model. At last, we used the model to predict the new houses and convert the result back to the original data frame so that the audiences could look at the actual number of prices for each new house.
+
+Overall, we have decided to use model 2 for our predictions because we can identify each variable and how they correlate to the independent variable. Also, we believe both models work well with our predictions, but we would like to have model 2 as our final decision as it is more informative. We have also reviewed model 1 to see whether the regression tree has considered more than one variable to ensure we have chosen the correct variables. Therefore, we have considered both models to predict the result, but we have used the second model as our final model to predict the new houses. 
+
+
